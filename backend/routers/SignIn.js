@@ -124,7 +124,6 @@ signInRouter.post("/forgotPassword/new", authMiddlewareProv, async (req, res) =>
     console.log(hashedPassword);
 
     // Update the password in the database
-    console.log(req.user)
     await Managers.updateOne({ email: req.user.email }, { $set: { password: hashedPassword } });
     res.status(200).send({ "response": "Password successfully changed" });
   } catch (err) {
@@ -181,6 +180,9 @@ signInRouter.post("/forgotPassword/repeat", authMiddlewareProv, async (req, res)
     res.status(500).send("Error resending code");
   }
 });
+
+
+
 
 
 
