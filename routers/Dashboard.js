@@ -27,7 +27,7 @@ dashboardRouter.get("/", authMiddleware, async(req, res) => {
 dashboardRouter.get("/connected", authMiddleware, async(req, res) => {
     try{
         console.log(req.user._id)
-        const clients = await Clients.find({connected:true, id_manager: req.user._id})
+        const clients = await Clients.find({connected:true})
         if(!clients) {
             console.log("There is no connected clients")
             res.status(404).send({response : "There is no connected clients"})
@@ -39,22 +39,11 @@ dashboardRouter.get("/connected", authMiddleware, async(req, res) => {
     }
 })
 
-// change min 
-dashboardRouter.post('/min', authMiddleware, async(req, res) => {
-    try{
-        await Managers.updateOne({_id : req.user._id}, {$set: {min: req.body.min}})
-        console.log("success update min")
-        res.status(200).send({response: "success update min"})
-    }catch(err){
-        console.log("error update min")
-        res.status(500).send("error update min : ", err)
-    }
-})
 
 // change max 
 dashboardRouter.post('/max', authMiddleware, async(req, res) => {
     try{
-        await Managers.updateOne({_id : req.user._id}, {$set: {max: req.body.max}})
+        await Managers.updateOne({_id : req.user._id}, {$set: {max: req.body.max, current : req.body.max}})
         console.log("success update max")
         res.status(200).send({response: "success update max"})
     }catch(err){
@@ -64,9 +53,9 @@ dashboardRouter.post('/max', authMiddleware, async(req, res) => {
 })
 
 // change max of a client
-dashboardRouter.post('/maxClient', authMiddleware, async(req, res) => {
+dashboardRouter.post('/:id/maxClient', authMiddleware, async(req, res) => {
     try{
-        await Clients.updateOne({_id : req.body.id, id_manager : req.user._id}, {$set: {max: req.body.max}})
+        await Clients.updateOne({_id : req.params.id}, {$set: {max: req.body.max}})
         console.log("success update max client")
         res.status(200).send({response: "success update max client"})
     }catch(err){
@@ -95,7 +84,6 @@ dashboardRouter.get('/clients-connected-per-hour', authMiddleware, async (req, r
             {
                 $match: {
                     "clientInfo.connected": true,
-                    "clientInfo.id_manager": new mongoose.Types.ObjectId(req.user._id),
                     timestamp: { $gte: past24Hours }
                 }
             },
@@ -116,6 +104,61 @@ dashboardRouter.get('/clients-connected-per-hour', authMiddleware, async (req, r
         res.status(500).json({ message: 'Error get clients connected per hour' });
     }
 });
+
+// get nbr alocations per hour
+dashboardRouter.get('/bandwidth-per-hour', authMiddleware, async (req, res) => {
+    try {
+        const past24Hours = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+        
+        const bandwidthAllocationsByHour = await Bandwidth.aggregate([
+            {
+                $match: {
+                    timestamp: { $gte: past24Hours } // On filtre sur les 24 dernières heures
+                }
+            },
+            {
+                $group: {
+                    _id: { $hour: "$timestamp" }, // Grouper par heure
+                    count: { $sum: 1 } // Compter le nombre d'allocations
+                }
+            },
+            {
+                $sort: { _id: 1 } // Trier par heure croissante
+            }
+        ]);
+
+        res.json(bandwidthAllocationsByHour);
+    } catch (error) {
+        console.error('Erreur lors de la récupération des allocations de bande passante par heure :', error);
+        res.status(500).json({ message: 'Erreur lors de la récupération des allocations de bande passante par heure', error: error.message });
+    }
+});
+
+//disconnect
+dashboardRouter.post("/:id/disconnect", authMiddleware, async(req, res) => {
+    try {
+        // Met à jour le client pour déconnecter
+        await Clients.updateOne({_id: req.params.id}, {$set: {connected: false}});
+        console.log("Client disconnected successfully");
+
+        // Recherchez tous les documents dans Bandwidth avec id_client égal à req.params.id
+        const bandwidths = await Bandwidth.find({ id_client: req.params.id });
+
+        // Additionne toutes les valeurs `get` des documents trouvés
+        const totalGet = bandwidths.reduce((acc, bandwidth) => acc + bandwidth.get, 0);
+        console.log("Total `get` to be added back:", totalGet);
+
+        // Incrémente le `current` de l'utilisateur en utilisant la somme calculée
+        await Managers.updateOne({ _id: req.user._id }, { $inc: { current: totalGet } });
+        console.log("Manager current updated successfully");
+
+        res.status(200).send({ response: "success" });
+    } catch (err) {
+        console.log("Error during disconnect:", err);
+        res.status(500).send({ response: "Error during disconnect" });
+    }
+});
+
 
 
 

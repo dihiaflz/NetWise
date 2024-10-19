@@ -7,7 +7,7 @@ const bandwidthSchema = new mongoose.Schema({
     },
     timestamp : {
         type : Date,
-        required : true
+        default : Date.now
     },
     want : {
         type : Number,
@@ -16,6 +16,11 @@ const bandwidthSchema = new mongoose.Schema({
     get : {
         type : Number,
         required : true
+    },
+    id_client : {
+        type: mongoose.Types.ObjectId,
+        ref: 'clients', 
+        required: true
     }
 }, { collection : "bandwidth"}
 )
