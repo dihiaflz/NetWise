@@ -1,9 +1,9 @@
 const mongoose = require("mongoose")
 
 const clientsSchema = new mongoose.Schema({
-    id_manager : {
-        type : mongoose.Schema.Types.ObjectId,
-        ref :  "managers"
+    ip_adress :{
+        type : String,
+        required : true
     },
     connected : {
         type : Boolean,
@@ -12,6 +12,10 @@ const clientsSchema = new mongoose.Schema({
     max : {
         type : Number,
         default : 15
+    },
+    interface : {
+        type : "String",
+        required : true
     }
 }, { collection : "clients"}
 )

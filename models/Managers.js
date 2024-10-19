@@ -9,10 +9,6 @@ const managersSchema = new mongoose.Schema({
         type : String,
         required : true
     },
-    min : {
-        type : Number,
-        default : 15
-    },
     max : {
         type : Number,
         required : true

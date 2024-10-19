@@ -1,9 +1,9 @@
 const mongoose = require("mongoose")
 
 const bandwidthSchema = new mongoose.Schema({
-    id_client : {
-        type : mongoose.Schema.Types.ObjectId,
-        ref :  "clients"
+    ip_client : {
+        type : String,
+        required : true
     },
     timestamp : {
         type : Date,
