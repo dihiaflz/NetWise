@@ -7,6 +7,10 @@ const http = require("http"); // Import http module
 const socketIo = require("socket.io"); // Import Socket.IO
 const app = express();
 
+const Clients =require("./models/Clients")
+const Managers =require("./models/Managers")
+const Bandwidth =require("./models/Bandwidth")
+
 // Middleware setup
 app.use(bodyParser.json()); // Parse incoming JSON requests
 app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded requests
@@ -20,10 +24,14 @@ app.use("/signIn", signIn);
 const dashboard = require("./routers/Dashboard"); // Dashboard route
 app.use("/dashboard", dashboard);
 
+const simulation = require("./routers/Simulation"); // Dashboard route
+app.use("/simulation", simulation);
+
 
 // Create HTTP server and Socket.IO instance
 const server = http.createServer(app);
 const authMiddlewareSocket = require("./authMiddlewareSocket"); // Middleware for socket authentication
+const authMiddleware = require("./authMiddleware");
 
 const io = socketIo(server, {
     cors: {
@@ -37,7 +45,7 @@ const io = socketIo(server, {
 io.use(authMiddlewareSocket); // Use authentication middleware for socket connections
 
 // CISCO connection
-
+/*
 const axios = require('axios'); // Import axios for HTTP requests
 const authMiddleware = require("./authMiddleware");
 let serviceTicket = '';  // Service Ticket for authentication
@@ -65,7 +73,7 @@ app.use(async (req, res, next) => {
     next();
 });
 
-
+*/
 // Database connection
 const connectDB = async () => {
     try {
@@ -90,11 +98,9 @@ io.on("connection", (socket) => {
     const sendBandwidthData = async () => {
         const Bandwidth = require("./models/Bandwidth");
         const Clients = require("./models/Clients");
-        const clients = await Clients.find({ id_manager: socket.user._id }).select('_id');
-
+        const clients = await Clients.find().select('_id');
         // Récupérer les IDs des clients
         const clientIds = clients.map(client => client._id);
-
         // Trouver les enregistrements de bande passante correspondants
         const bandwidthData = await Bandwidth.find({ id_client: { $in: clientIds } }).populate("id_client").sort({_id: -1})
         socket.emit("bandwidthData", bandwidthData); // Send existing data to the connected client
@@ -112,20 +118,54 @@ io.on("connection", (socket) => {
 
 // c la partie que je dois changer
 
-app.post("/api/bandwidth", async (req, res) => {
-    const Bandwidth = require("./models/Bandwidth");
-    const newBandwidth = new Bandwidth(req.body);
-    await newBandwidth.save();
+app.post("/:id/alocate",authMiddleware, async (req, res) => {
+    try {
+        let get;
+        const client = await Clients.findById(req.params.id); // Utilisez findById pour récupérer un seul document
+        console.log(req.user)
+        if (!client) {
+            console.log("there is no client with this id");
+            return res.status(404).send({ response: "there is no client with this id" });
+        }
 
-    // Emit the new document to all connected clients
-    io.emit("newBandwidth", newBandwidth);
+        if (!client.connected) {
+            await Clients.updateOne({ _id: req.params.id }, { $set: { connected: true } });
+        }
 
-    res.status(201).json(newBandwidth); // Respond with the new document
+        // Vérification de la demande d'allocation
+        if (req.body.want <= client.max && req.body.want <= req.user.current) {
+            get = req.body.want;
+        } else if (req.body.want > client.max && client.max <= req.user.current) {
+            get = client.max;
+        } else if (!(req.user.current==0)) {
+            get = req.user.current;
+        } else {
+            return res.status(400).send({ response: "Bandwidth overflow" });
+        }
+
+        // Création de l'enregistrement dans la collection Bandwidth
+        const bandwidth = new Bandwidth({
+            id_client : client._id,
+            ip_client: client.ip_adress, // Assurez-vous d'utiliser le bon champ
+            get: get,
+            want: req.body.want,
+        });
+
+        await bandwidth.save();
+        await Managers.updateOne({_id : req.user._id}, { $inc: { current: -get } })
+        console.log(bandwidth);
+        // Emit the new document to all connected clients
+        io.emit("newBandwidth", bandwidth);
+        res.status(200).send({ response: "success allocate bandwidth" });
+    } catch (error) {
+        console.error("Allocation failed:", error); // Affichez l'erreur pour le débogage
+        res.status(500).send("allocation failed");
+    }
 });
 
 // fin partie à changer
 
-
+/*
 // CISCO APIs
 
 // Route to get all hosts in the network
@@ -277,19 +317,7 @@ async function checkExistingPolicy(policyName, relevanceLevel) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+*/
 
 
 
@@ -298,7 +326,6 @@ async function checkExistingPolicy(policyName, relevanceLevel) {
 const PORT = process.env.PORT || 5000; // Set port from environment or default to 5000
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
-    getServiceTicket()
 });
 
 // Fallback for non-existing routes
